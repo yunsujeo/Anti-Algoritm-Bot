@@ -76,8 +76,8 @@ def curate_with_gemini(candidates):
 """
 
     # SDK 최신 표준 모델명인 gemini-2.5-flash 지정
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
+response = client.models.generate_content(
+        model="gemini-2.0-flash",
         contents=prompt
     )
     return response.text
