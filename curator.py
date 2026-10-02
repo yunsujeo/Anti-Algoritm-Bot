@@ -84,15 +84,15 @@ def curate_with_gemini(candidates):
 • 🔗 링크: [URL]
 """
 
-    # 우선순위별 후보 모델 목록
+    # 최신 SDK 지원 모델 목록으로 개편
     models_to_try = [
         "gemini-2.5-flash",
-        "gemini-1.5-flash",
-        "gemini-2.0-flash-exp",
+        "gemini-2.5-pro",
+        "gemini-3.8-flash",
     ]
 
     max_retries = 3
-    retry_delay = 3  # 초 단위
+    retry_delay = 3
 
     last_exception = None
 
@@ -115,7 +115,7 @@ def curate_with_gemini(candidates):
 
         print(f"❌ {model_name} 모델의 모든 시도(3회)가 실패했습니다. 다음 모델로 전환합니다.")
 
-    return f"모든 Gemini 모델 호출 실패 (마지막 에러: {last_exception})"
+    return f"gemini 모델 모든 시도가 실패했습니다. (마지막 에러: {last_exception})"
 
 
 def send_telegram_message(text):
