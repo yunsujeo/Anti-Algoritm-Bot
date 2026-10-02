@@ -3,7 +3,7 @@ import requests
 from googleapiclient.discovery import build
 from google import genai
 
-# GitHub Secrets에서 안전하게 키를 읽어옵니다.
+# GitHub Secrets에서 키를 읽어옵니다.
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -56,7 +56,6 @@ def curate_with_gemini(candidates):
     if not candidates:
         return "조건에 맞는 추천 영상 후보가 없습니다."
 
-    # Gemini API 클라이언트 생성
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     prompt = f"""
@@ -75,8 +74,7 @@ def curate_with_gemini(candidates):
 • 🔗 링크: [URL]
 """
 
-    # SDK 최신 표준 모델명인 gemini-2.5-flash 지정
-response = client.models.generate_content(
+    response = client.models.generate_content(
         model="gemini-2.0-flash",
         contents=prompt
     )
