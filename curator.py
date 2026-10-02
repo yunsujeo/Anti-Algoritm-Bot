@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import requests
 from googleapiclient.discovery import build
@@ -64,7 +65,8 @@ def fetch_anti_algorithm_videos(query, max_results=20):
 
 def curate_with_gemini(candidates):
     if not candidates:
-        return "조건에 맞는 추천 영상 후보가 없습니다."
+        print("⚠️ 조건에 맞는 추천 영상 후보가 없습니다.")
+        return None
 
     client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -84,11 +86,10 @@ def curate_with_gemini(candidates):
 • 🔗 링크: [URL]
 """
 
-    # 최신 SDK 지원 모델 목록으로 개편
+    # 가장 표준적이고 안정적인 공식 모델로 변경
     models_to_try = [
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-3.8-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
     ]
 
     max_retries = 3
@@ -115,21 +116,33 @@ def curate_with_gemini(candidates):
 
         print(f"❌ {model_name} 모델의 모든 시도(3회)가 실패했습니다. 다음 모델로 전환합니다.")
 
-    return f"gemini 모델 모든 시도가 실패했습니다. (마지막 에러: {last_exception})"
+    # 모든 시도 실패 시 텍스트 리턴이 아닌 '진짜 에러' 발생
+    raise RuntimeError(f"모든 Gemini 모델 호출에 실패했습니다. (원인: {last_exception})")
 
 
 def send_telegram_message(text):
+    if not text:
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": text,
         "parse_mode": "Markdown",
     }
-    requests.post(url, json=payload)
+    res = requests.post(url, json=payload)
+    res.raise_for_status()
 
 
 if __name__ == "__main__":
-    keyword = "독립 다큐"
-    candidates = fetch_anti_algorithm_videos(keyword)
-    curation_report = curate_with_gemini(candidates)
-    send_telegram_message(curation_report)
+    try:
+        keyword = "독립 다큐"
+        candidates = fetch_anti_algorithm_videos(keyword)
+        curation_report = curate_with_gemini(candidates)
+        
+        if curation_report:
+            send_telegram_message(curation_report)
+            print("🎉 성공적으로 텔레그램 메세지를 전송했습니다.")
+    except Exception as e:
+        print(f"\n❌ [최종 실행 실패]: {e}")
+        # GitHub Actions가 확실하게 실패(빨간색 X)로 인식하도록 exit code 1 부여
+        sys.exit(1)
