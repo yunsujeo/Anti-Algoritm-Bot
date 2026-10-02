@@ -63,6 +63,36 @@ def fetch_anti_algorithm_videos(query, max_results=20):
     return candidates
 
 
+def get_available_gemini_models(client):
+    """현재 API Key로 사용 가능한 Gemini 모델 목록을 동적으로 탐색합니다."""
+    preferred_keywords = ["3.1", "2.5", "1.5", "flash", "pro"]
+    found_models = []
+
+    try:
+        # API에서 실제 생성(generateContent)을 지원하는 모든 모델 조회
+        for m in client.models.list():
+            model_id = m.name.replace("models/", "") if hasattr(m, "name") else str(m)
+            # generateContent 지원 모델 추출
+            if "gemini" in model_id.lower():
+                found_models.append(model_id)
+        
+        print(f"🔍 API에서 탐색된 전체 Gemini 모델 목록: {found_models}")
+    except Exception as e:
+        print(f"⚠️ 모델 목록 자동 조회 실패: {e}. 기본 백업 모델 리스트를 사용합니다.")
+        # 만약 목록 조회가 실패할 경우를 대비한 최후의 기본값
+        found_models = ["gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-1.5-flash"]
+
+    # 선호 키워드 순서대로 우선 정렬
+    def sort_key(name):
+        for idx, kw in enumerate(preferred_keywords):
+            if kw in name:
+                return idx
+        return 99
+
+    sorted_models = sorted(found_models, key=sort_key)
+    return sorted_models if sorted_models else ["gemini-2.5-flash"]
+
+
 def curate_with_gemini(candidates):
     if not candidates:
         print("⚠️ 조건에 맞는 추천 영상 후보가 없습니다.")
@@ -86,38 +116,35 @@ def curate_with_gemini(candidates):
 • 🔗 링크: [URL]
 """
 
-    # new google-genai SDK 규격에 맞는 최신 모델 ID 목록
-    models_to_try = [
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-1.5-flash-latest",
-    ]
+    # 1. 동적으로 이용 가능한 모델 탐색
+    available_models = get_available_gemini_models(client)
+    print(f"🎯 최종 시도할 모델 순서: {available_models}")
 
-    max_retries = 3
-    retry_delay = 3
+    # 2. 연속성 있는 재시도 루프 (최대 5개의 전체 사이클 반복)
+    max_total_rounds = 5
+    
+    for round_num in range(1, max_total_rounds + 1):
+        print(f"\n🔄 [시도 라운드 {round_num}/{max_total_rounds}] 시작...")
+        
+        for model_name in available_models:
+            print(f"\n -> [모델 시도]: {model_name}")
+            for attempt in range(1, 4):
+                try:
+                    print(f"    - {attempt}번째 호출 중...")
+                    response = client.models.generate_content(
+                        model=model_name, contents=prompt
+                    )
+                    if response and response.text:
+                        print(f"✅ [{model_name}] 호출 성공! 결과 생성 완료.")
+                        return response.text
+                except Exception as e:
+                    print(f"    ⚠️ 오류 발생: {e}")
+                    time.sleep(2)  # 잠시 대기 후 다음 시도
 
-    last_exception = None
+        print(f"⏳ 라운드 {round_num} 완료 후 모든 모델 실패. 5초 후 다음 라운드를 재시도합니다...")
+        time.sleep(5)
 
-    for model_name in models_to_try:
-        print(f"\n[시도 중인 모델]: {model_name}")
-        for attempt in range(1, max_retries + 1):
-            try:
-                print(f" -> {attempt}번째 호출 시도...")
-                response = client.models.generate_content(
-                    model=model_name, contents=prompt
-                )
-                print(f"✅ {model_name} 호출 성공!")
-                return response.text
-            except Exception as e:
-                last_exception = e
-                print(f"⚠️ {model_name} {attempt}회 시도 실패: {e}")
-                if attempt < max_retries:
-                    print(f" ⏱️ {retry_delay}초 후 재시도합니다...")
-                    time.sleep(retry_delay)
-
-        print(f"❌ {model_name} 모델의 모든 시도(3회)가 실패했습니다. 다음 모델로 전환합니다.")
-
-    raise RuntimeError(f"모든 Gemini 모델 호출에 실패했습니다. (원인: {last_exception})")
+    raise RuntimeError("모든 라운드 및 모든 Gemini 모델 호출에 최종 실패했습니다.")
 
 
 def send_telegram_message(text):
