@@ -86,10 +86,11 @@ def curate_with_gemini(candidates):
 • 🔗 링크: [URL]
 """
 
-    # 가장 표준적이고 안정적인 공식 모델로 변경
+    # new google-genai SDK 규격에 맞는 최신 모델 ID 목록
     models_to_try = [
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-1.5-flash-latest",
     ]
 
     max_retries = 3
@@ -116,7 +117,6 @@ def curate_with_gemini(candidates):
 
         print(f"❌ {model_name} 모델의 모든 시도(3회)가 실패했습니다. 다음 모델로 전환합니다.")
 
-    # 모든 시도 실패 시 텍스트 리턴이 아닌 '진짜 에러' 발생
     raise RuntimeError(f"모든 Gemini 모델 호출에 실패했습니다. (원인: {last_exception})")
 
 
@@ -141,8 +141,7 @@ if __name__ == "__main__":
         
         if curation_report:
             send_telegram_message(curation_report)
-            print("🎉 성공적으로 텔레그램 메세지를 전송했습니다.")
+            print("🎉 성공적으로 텔레그램 메시지를 전송했습니다.")
     except Exception as e:
         print(f"\n❌ [최종 실행 실패]: {e}")
-        # GitHub Actions가 확실하게 실패(빨간색 X)로 인식하도록 exit code 1 부여
         sys.exit(1)
