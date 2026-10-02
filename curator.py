@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from googleapiclient.discovery import build
 from google import genai
@@ -83,10 +84,38 @@ def curate_with_gemini(candidates):
 • 🔗 링크: [URL]
 """
 
-    response = client.models.generate_content(
-        model="gemini-3.8-flash", contents=prompt
-    )
-    return response.text
+    # 우선순위별 후보 모델 목록
+    models_to_try = [
+        "gemini-2.5-flash",
+        "gemini-1.5-flash",
+        "gemini-2.0-flash-exp",
+    ]
+
+    max_retries = 3
+    retry_delay = 3  # 초 단위
+
+    last_exception = None
+
+    for model_name in models_to_try:
+        print(f"\n[시도 중인 모델]: {model_name}")
+        for attempt in range(1, max_retries + 1):
+            try:
+                print(f" -> {attempt}번째 호출 시도...")
+                response = client.models.generate_content(
+                    model=model_name, contents=prompt
+                )
+                print(f"✅ {model_name} 호출 성공!")
+                return response.text
+            except Exception as e:
+                last_exception = e
+                print(f"⚠️ {model_name} {attempt}회 시도 실패: {e}")
+                if attempt < max_retries:
+                    print(f" ⏱️ {retry_delay}초 후 재시도합니다...")
+                    time.sleep(retry_delay)
+
+        print(f"❌ {model_name} 모델의 모든 시도(3회)가 실패했습니다. 다음 모델로 전환합니다.")
+
+    return f"모든 Gemini 모델 호출 실패 (마지막 에러: {last_exception})"
 
 
 def send_telegram_message(text):
