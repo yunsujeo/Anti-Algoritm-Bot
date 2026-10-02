@@ -9,48 +9,57 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
+
 def fetch_anti_algorithm_videos(query, max_results=20):
     youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
-    search_response = youtube.search().list(
-        q=query,
-        part="snippet",
-        maxResults=max_results,
-        type="video",
-        order="date"
-    ).execute()
+    search_response = (
+        youtube.search()
+        .list(
+            q=query,
+            part="snippet",
+            maxResults=max_results,
+            type="video",
+            order="date",
+        )
+        .execute()
+    )
 
-    video_ids = [item['id']['videoId'] for item in search_response.get('items', [])]
+    video_ids = [
+        item["id"]["videoId"] for item in search_response.get("items", [])
+    ]
     if not video_ids:
         return []
 
-    stats_response = youtube.videos().list(
-        part="statistics,snippet",
-        id=",".join(video_ids)
-    ).execute()
+    stats_response = (
+        youtube.videos()
+        .list(part="statistics,snippet", id=",".join(video_ids))
+        .execute()
+    )
 
     candidates = []
-    for item in stats_response.get('items', []):
-        title = item['snippet']['title']
-        channel = item['snippet']['channelTitle']
-        stats = item['statistics']
+    for item in stats_response.get("items", []):
+        title = item["snippet"]["title"]
+        channel = item["snippet"]["channelTitle"]
+        stats = item["statistics"]
 
-        views = int(stats.get('viewCount', 0))
-        likes = int(stats.get('likeCount', 0))
+        views = int(stats.get("viewCount", 0))
+        likes = int(stats.get("likeCount", 0))
 
         if 500 <= views <= 50000 and views > 0:
             like_ratio = (likes / views) * 100
             if like_ratio >= 3.5:
                 candidates.append({
-                    'title': title,
-                    'channel': channel,
-                    'views': views,
-                    'likes': likes,
-                    'like_ratio': round(like_ratio, 2),
-                    'url': f"https://www.youtube.com/watch?v={item['id']}"
+                    "title": title,
+                    "channel": channel,
+                    "views": views,
+                    "likes": likes,
+                    "like_ratio": round(like_ratio, 2),
+                    "url": f"https://www.youtube.com/watch?v={item['id']}",
                 })
 
     return candidates
+
 
 def curate_with_gemini(candidates):
     if not candidates:
@@ -75,19 +84,20 @@ def curate_with_gemini(candidates):
 """
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt
+        model="gemini-3.8-flash", contents=prompt
     )
     return response.text
+
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": text,
-        "parse_mode": "Markdown"
+        "parse_mode": "Markdown",
     }
     requests.post(url, json=payload)
+
 
 if __name__ == "__main__":
     keyword = "독립 다큐"
