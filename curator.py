@@ -64,28 +64,23 @@ def fetch_anti_algorithm_videos(query, max_results=20):
 
 
 def get_available_gemini_models(client):
-    """현재 API Key로 사용 가능한 Gemini 모델 목록을 동적으로 탐색합니다."""
-    preferred_keywords = ["3.1", "2.5", "1.5", "flash", "pro"]
+    """무료 할당량이 높고 안정적인 Flash 계열을 우선 탐색합니다."""
+    preferred_keywords = ["flash-lite", "flash", "3.1", "2.5", "1.5"]
     found_models = []
 
     try:
-        # API에서 실제 생성(generateContent)을 지원하는 모든 모델 조회
         for m in client.models.list():
             model_id = m.name.replace("models/", "") if hasattr(m, "name") else str(m)
-            # generateContent 지원 모델 추출
             if "gemini" in model_id.lower():
                 found_models.append(model_id)
-        
-        print(f"🔍 API에서 탐색된 전체 Gemini 모델 목록: {found_models}")
+        print(f"🔍 탐색된 전체 Gemini 모델: {found_models}")
     except Exception as e:
-        print(f"⚠️ 모델 목록 자동 조회 실패: {e}. 기본 백업 모델 리스트를 사용합니다.")
-        # 만약 목록 조회가 실패할 경우를 대비한 최후의 기본값
-        found_models = ["gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-1.5-flash"]
+        print(f"⚠️ 모델 목록 조회 실패: {e}. 기본 Flash 모델을 사용합니다.")
+        found_models = ["gemini-2.5-flash", "gemini-1.5-flash"]
 
-    # 선호 키워드 순서대로 우선 정렬
     def sort_key(name):
         for idx, kw in enumerate(preferred_keywords):
-            if kw in name:
+            if kw in name.lower():
                 return idx
         return 99
 
@@ -116,21 +111,17 @@ def curate_with_gemini(candidates):
 • 🔗 링크: [URL]
 """
 
-    # 1. 동적으로 이용 가능한 모델 탐색
     available_models = get_available_gemini_models(client)
-    print(f"🎯 최종 시도할 모델 순서: {available_models}")
+    print(f"🎯 시도할 모델 순서: {available_models}")
 
-    # 2. 연속성 있는 재시도 루프 (최대 5개의 전체 사이클 반복)
-    max_total_rounds = 5
-    
+    max_total_rounds = 3
     for round_num in range(1, max_total_rounds + 1):
         print(f"\n🔄 [시도 라운드 {round_num}/{max_total_rounds}] 시작...")
         
         for model_name in available_models:
-            print(f"\n -> [모델 시도]: {model_name}")
-            for attempt in range(1, 4):
+            print(f" -> [모델 시도]: {model_name}")
+            for attempt in range(1, 3):
                 try:
-                    print(f"    - {attempt}번째 호출 중...")
                     response = client.models.generate_content(
                         model=model_name, contents=prompt
                     )
@@ -139,25 +130,43 @@ def curate_with_gemini(candidates):
                         return response.text
                 except Exception as e:
                     print(f"    ⚠️ 오류 발생: {e}")
-                    time.sleep(2)  # 잠시 대기 후 다음 시도
+                    time.sleep(2)
 
-        print(f"⏳ 라운드 {round_num} 완료 후 모든 모델 실패. 5초 후 다음 라운드를 재시도합니다...")
+        print(f"⏳ 라운드 {round_num} 완료 후 5초 대기...")
         time.sleep(5)
 
-    raise RuntimeError("모든 라운드 및 모든 Gemini 모델 호출에 최종 실패했습니다.")
+    raise RuntimeError("모든 Gemini 모델 호출 실패")
 
 
 def send_telegram_message(text):
+    """글자 수 제한 및 마크다운 오류에 유연하게 대응하여 분할 전송합니다."""
     if not text:
         return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": text,
-        "parse_mode": "Markdown",
-    }
-    res = requests.post(url, json=payload)
-    res.raise_for_status()
+    
+    # 텔레그램 안전한 최대 길이 (3,000자 단위로 분할)
+    MAX_LENGTH = 3000
+    chunks = [text[i:i + MAX_LENGTH] for i in range(0, len(text), MAX_LENGTH)]
+
+    for idx, chunk in enumerate(chunks):
+        # 1차 시도: Markdown 파싱 적용
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": chunk,
+            "parse_mode": "Markdown",
+        }
+        res = requests.post(url, json=payload)
+
+        # 마크다운 특수문자 오류나 400 Bad Request 발생 시 일반 텍스트로 안전하게 재시도
+        if res.status_code != 200:
+            print(f"⚠️ 마크다운 전송 실패({res.status_code}). 일반 텍스트 모드로 재시도합니다.")
+            payload.pop("parse_mode", None)
+            res_retry = requests.post(url, json=payload)
+            res_retry.raise_for_status()
+
+        print(f"📨 텔레그램 메시지 조각 ({idx + 1}/{len(chunks)}) 전송 완료")
+        time.sleep(1)
 
 
 if __name__ == "__main__":
@@ -168,7 +177,7 @@ if __name__ == "__main__":
         
         if curation_report:
             send_telegram_message(curation_report)
-            print("🎉 성공적으로 텔레그램 메시지를 전송했습니다.")
+            print("🎉 모든 큐레이션 메시지가 성공적으로 전송되었습니다.")
     except Exception as e:
         print(f"\n❌ [최종 실행 실패]: {e}")
         sys.exit(1)
